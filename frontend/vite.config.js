@@ -143,6 +143,15 @@ async function importFrappeUIPlugin(isDev, config) {
     }
   }
   // Fall back to npm package if local import fails
+  // frappe-ui contains virtual `~icons` imports handled by its Vite plugin.
+  // Keep the package out of esbuild's dependency optimizer, which runs before
+  // that plugin can resolve those imports.
+  if (isDev) {
+    config.optimizeDeps.exclude = [
+      ...(config.optimizeDeps.exclude || []),
+      'frappe-ui',
+    ]
+  }
   const module = await import('frappe-ui/vite')
   return module.default
 }
