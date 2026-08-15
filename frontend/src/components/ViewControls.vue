@@ -52,7 +52,7 @@
       </div>
       <div
         v-if="viewUpdated && route.query.view && (!view.public || isManager())"
-        class="flex flex-row-reverse items-center gap-2 border-r pe-2"
+        class="flex flex-row-reverse items-center gap-2 border-e pe-2"
       >
         <Button :label="__('Cancel')" @click="cancelChanges" />
         <Button :label="__('Save Changes')" @click="saveView" />
@@ -149,7 +149,7 @@
     <div class="flex items-center gap-2">
       <div
         v-if="viewUpdated && route.query.view && (!view.public || isManager())"
-        class="flex items-center gap-2 border-r pe-2"
+        class="flex items-center gap-2 border-e pe-2"
       >
         <Button :label="__('Cancel')" @click="cancelChanges" />
         <Button :label="__('Save Changes')" @click="saveView" />
