@@ -1,4 +1,4 @@
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import frappe
 from frappe import _
@@ -13,11 +13,11 @@ def return_to_connector(return_to: str):
 	if not is_gateway(return_to):
 		frappe.throw(_("This app cannot connect to your CRM."), frappe.PermissionError)
 
-	site = frappe.local.request.host
+	parts = urlsplit(return_to)
+	query = [(key, value) for key, value in parse_qsl(parts.query, keep_blank_values=True) if key != "site"]
+	query.append(("site", frappe.local.request.host))
 	frappe.local.response["type"] = "redirect"
-	frappe.local.response["location"] = (
-		f"{return_to}{'&' if '?' in return_to else '?'}{urlencode({'site': site})}"
-	)
+	frappe.local.response["location"] = urlunsplit(parts._replace(query=urlencode(query)))
 
 
 def gateway_url() -> str:
@@ -27,17 +27,29 @@ def gateway_url() -> str:
 
 def is_gateway(url: str) -> bool:
 	parts, gateway = urlsplit(url), urlsplit(gateway_url())
-	return (parts.scheme, parts.netloc) == (gateway.scheme, gateway.netloc)
+	same_origin = (parts.scheme, parts.netloc.lower()) == (gateway.scheme, gateway.netloc.lower())
+	return same_origin and not parts.fragment
 
 
 def ensure_gateway_client():
 	"""The public OAuth client the gateway signs users in with. Its only redirect is the gateway,
 	so no other app can receive its codes."""
-	redirect_uri = f"{gateway_url()}/site/callback"
-	if frappe.db.get_value("OAuth Client", CLIENT_ID, "redirect_uris") == redirect_uri:
+	values = gateway_client_values()
+	if not frappe.db.exists("OAuth Client", CLIENT_ID):
+		frappe.get_doc({"doctype": "OAuth Client", **values}).insert(
+			ignore_permissions=True, set_name=CLIENT_ID
+		)
 		return
 
-	values = {
+	client = frappe.get_doc("OAuth Client", CLIENT_ID)
+	if any(client.get(key) != value for key, value in values.items()):
+		client.update(values).save(ignore_permissions=True)
+
+
+def gateway_client_values() -> dict:
+	"""The user already allowed the AI app on the gateway's own page, so the site asks only for sign in."""
+	redirect_uri = f"{gateway_url()}/site/callback"
+	return {
 		"app_name": "ChatGPT and Claude",
 		"redirect_uris": redirect_uri,
 		"default_redirect_uri": redirect_uri,
@@ -45,11 +57,5 @@ def ensure_gateway_client():
 		"response_type": "Code",
 		"token_endpoint_auth_method": "None",
 		"scopes": "all",
-		"skip_authorization": 0,
+		"skip_authorization": 1,
 	}
-	if frappe.db.exists("OAuth Client", CLIENT_ID):
-		frappe.get_doc("OAuth Client", CLIENT_ID).update(values).save(ignore_permissions=True)
-	else:
-		frappe.get_doc({"doctype": "OAuth Client", **values}).insert(
-			ignore_permissions=True, set_name=CLIENT_ID
-		)
