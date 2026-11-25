@@ -29,8 +29,17 @@ class TestConnector(IntegrationTestCase):
 		self.assertEqual(frappe.local.response["type"], "redirect")
 		self.assertEqual(frappe.local.response["location"], f"{RETURN_TO}&site=acme.example.test")
 
+	def test_replaces_a_site_already_in_the_address(self):
+		return_to_connector(f"{RETURN_TO}&site=evil.example.test")
+
+		self.assertEqual(frappe.local.response["location"], f"{RETURN_TO}&site=acme.example.test")
+
 	def test_refuses_anything_but_the_gateway(self):
-		for url in ("https://evil.example.test/connect/return", "http://gateway.example.test/connect/return"):
+		for url in (
+			"https://evil.example.test/connect/return",
+			"http://gateway.example.test/connect/return",
+			f"{RETURN_TO}#x",
+		):
 			with self.assertRaises(frappe.PermissionError):
 				return_to_connector(url)
 
@@ -41,7 +50,14 @@ class TestConnector(IntegrationTestCase):
 		client = frappe.get_doc("OAuth Client", CLIENT_ID)
 		self.assertEqual(client.redirect_uris, f"{GATEWAY}/site/callback")
 		self.assertEqual(client.token_endpoint_auth_method, "None")
-		self.assertFalse(client.skip_authorization)
+		self.assertTrue(client.skip_authorization)
+
+	def test_gateway_client_settings_are_restored(self):
+		ensure_gateway_client()
+		frappe.db.set_value("OAuth Client", CLIENT_ID, "skip_authorization", 0)
+		ensure_gateway_client()
+
+		self.assertEqual(frappe.db.get_value("OAuth Client", CLIENT_ID, "skip_authorization"), 1)
 
 	def test_gateway_client_follows_a_new_gateway_address(self):
 		ensure_gateway_client()
